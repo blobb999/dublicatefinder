@@ -22,10 +22,11 @@ def crc32(file_path):
                 if not data:
                     break
                 crc = zlib.crc32(data, crc)
-    except PermissionError:
+    except (PermissionError, OSError):
         return None
 
     return crc & 0xFFFFFFFF
+
 
 def open_file_in_explorer(file_path):
     directory = os.path.dirname(file_path)
@@ -45,12 +46,11 @@ def on_double_click_listbox(event):
         if not selected_text.startswith("----- Duplicate Group -----"):
             open_file_in_explorer(selected_text)
 
-def find_duplicates(directory, progress_var):
+def find_duplicates(directory, files_processed_var, current_file_var):
     global stop_search
     file_size_dict = defaultdict(list)
     total_files = 0
 
-    # Group files by their size
     for foldername, subfolders, filenames in os.walk(directory):
         if stop_search:
             break
@@ -58,12 +58,15 @@ def find_duplicates(directory, progress_var):
             if stop_search:
                 break
             file_path = os.path.join(foldername, filename)
-            file_size = os.path.getsize(file_path)
-            file_size_dict[file_size].append(file_path)
+            try:
+                file_size = os.path.getsize(file_path)
+                file_size_dict[file_size].append(file_path)
+            except OSError as e:
+                print(f"Error getting file size for {file_path}: {e}")
             total_files += 1
-            progress_var.set(f"Files processed: {total_files}")
+            files_processed_var.set(f"Files processed: {total_files}")
+            current_file_var.set(f"Current file: {os.path.basename(file_path)}")
 
-    # Calculate hashes only for files with matching sizes
     hashes = defaultdict(list)
     for file_paths in file_size_dict.values():
         if len(file_paths) > 1:
@@ -106,20 +109,21 @@ def show_result(duplicates):
 
     x_scrollbar.config(command=listbox.xview)
     y_scrollbar.config(command=listbox.yview)
-    
+
 def start_search():
     global stop_search
     stop_search = False
     directory = folder_path.get()
 
     def search_thread():
-        duplicates = find_duplicates(directory, progress_var)
+        duplicates = find_duplicates(directory, files_processed_var, current_file_var)
         if not stop_search:
             if duplicates:
                 show_result(duplicates)
             else:
                 messagebox.showinfo("Result", "No duplicate files found.")
-            progress_var.set("")
+            files_processed_var.set("")
+            current_file_var.set("")
 
     t = threading.Thread(target=search_thread)
     t.start()
@@ -132,7 +136,8 @@ app = tk.Tk()
 app.title("Duplicate Files Finder")
 
 folder_path = tk.StringVar()
-progress_var = tk.StringVar()
+files_processed_var = tk.StringVar()
+current_file_var = tk.StringVar()
 
 frame = tk.Frame(app)
 frame.pack(padx=10, pady=10)
@@ -152,7 +157,10 @@ search_button.grid(row=1, column=0, pady=(0, 10))
 stop_button = tk.Button(frame, text="Stop Search", command=stop_search_handler)
 stop_button.grid(row=1, column=1, pady=(0, 10))
 
-progress_label = tk.Label(frame, textvariable=progress_var, width=25, anchor="w")
-progress_label.grid(row=1, column=2, padx=(10, 0), pady=(0, 10))
+files_processed_label = tk.Label(frame, textvariable=files_processed_var, width=25, anchor="w")
+files_processed_label.grid(row=1, column=2, padx=(10, 0), pady=(0, 10))
+
+current_file_label = tk.Label(frame, textvariable=current_file_var, width=40, anchor="w")
+current_file_label.grid(row=2, column=1, pady=(0, 10))
 
 app.mainloop()
