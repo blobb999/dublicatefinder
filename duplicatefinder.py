@@ -47,9 +47,10 @@ def on_double_click_listbox(event):
 
 def find_duplicates(directory, progress_var):
     global stop_search
-    hashes = defaultdict(list)
+    file_size_dict = defaultdict(list)
     total_files = 0
 
+    # Group files by their size
     for foldername, subfolders, filenames in os.walk(directory):
         if stop_search:
             break
@@ -57,11 +58,21 @@ def find_duplicates(directory, progress_var):
             if stop_search:
                 break
             file_path = os.path.join(foldername, filename)
-            file_hash = crc32(file_path)
-            if file_hash is not None:
-                hashes[file_hash].append(file_path)
+            file_size = os.path.getsize(file_path)
+            file_size_dict[file_size].append(file_path)
             total_files += 1
             progress_var.set(f"Files processed: {total_files}")
+
+    # Calculate hashes only for files with matching sizes
+    hashes = defaultdict(list)
+    for file_paths in file_size_dict.values():
+        if len(file_paths) > 1:
+            for file_path in file_paths:
+                if stop_search:
+                    break
+                file_hash = crc32(file_path)
+                if file_hash is not None:
+                    hashes[file_hash].append(file_path)
 
     duplicates = [file_paths for file_paths in hashes.values() if len(file_paths) > 1]
 
